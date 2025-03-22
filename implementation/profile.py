@@ -97,6 +97,10 @@ class Profiler:
             self._write_tensorboard()
             self._write_json(programs)
 
+    def log_current_best(self):
+        print(f'[Generation {self._num_samples}] Current Best Score: {self._cur_best_program_score}')
+        print(f'Best Program Sample Order: {self._cur_best_program_sample_order}')
+
     def _record_and_verbose(self, sample_orders: int):
         function = self._all_sampled_functions[sample_orders]
         # function_name = function.name
@@ -119,6 +123,8 @@ class Profiler:
         if function.score is not None and score > self._cur_best_program_score:
             self._cur_best_program_score = score
             self._cur_best_program_sample_order = sample_orders
+
+        self.log_current_best()
 
         # update statistics about function
         if score:
