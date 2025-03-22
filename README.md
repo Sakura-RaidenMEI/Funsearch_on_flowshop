@@ -1,1 +1,3 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Sakura-RaidenMEI/Funsearch_on_flowshop/blob/main/flowshop/flowshop.ipynb)
+如果在本地跑，运行flowshop文件下的flowshop.py，会在logs/evaluator.log文件下生成每个sampler的json文件，查看每一轮evolve后的函数
+如果在Google colab上跑，貌似只能查看logs文件夹下的evaluator.log文件，里面包含了每一轮更新过后的函数
