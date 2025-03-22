@@ -152,7 +152,9 @@ class Evaluator:
             function_to_run: str,  # RZ: refers to the name of the function to run (e.g., 'evaluate')
             inputs: Sequence[Any],  # RZ: I guess this refers to the evaluate instance
             timeout_seconds: int = 30,
-            sandbox_class: Type[Sandbox] = Sandbox
+            sandbox_class: Type[Sandbox] = Sandbox,
+            verbose: bool = False,
+            log_file: str = './logs/evaluator.log',
     ):
         self._database = database
         self._template = template
@@ -161,6 +163,22 @@ class Evaluator:
         self._inputs = inputs
         self._timeout_seconds = timeout_seconds
         self._sandbox = sandbox_class()
+        self._verbose = verbose
+        self._log_file = log_file
+
+        import os
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        # 清空旧日志（如需要可注释）
+        with open(self._log_file, 'w') as f:
+            f.write("==== Evaluator Log Start ====\n")
+
+    def _log(self, message: str):
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        full_message = f"[{timestamp}] {message}"
+        with open(self._log_file, 'a') as f:
+            f.write(full_message + '\n')
+        if self._verbose:
+            print(full_message)
 
     def analyse(
             self,
@@ -180,6 +198,10 @@ class Evaluator:
         # RZ: 'program' is the template code + new_function
         new_function, program = _sample_to_program(
             sample, version_generated, self._template, self._function_to_evolve)
+
+        self._log(f"--- New Function Version {version_generated} ---")
+        self._log(f"Function Code:\n{new_function.body.strip()}")
+
         scores_per_test = {}
 
         time_reset = time.time()
@@ -195,9 +217,14 @@ class Evaluator:
 
             if runs_ok and not _calls_ancestor(program, self._function_to_evolve) and test_output is not None:
                 if not isinstance(test_output, (int, float)):
-                    print(f'RZ=> Error: test_output is {test_output}')
+                    self._log(f"Error: test_output is not float/int → {test_output}")
+                    print(f'Error: test_output is {test_output}')
                     raise ValueError('@function.run did not return an int/float score.')
                 scores_per_test[current_input] = test_output
+                self._log(f"Success | Input: {current_input} | Score: {test_output}")
+            else:
+                self._log(f"Failed | Input: {current_input} | runs_ok={runs_ok}, output={test_output}")
+
 
         evaluate_time = time.time() - time_reset
 
@@ -205,6 +232,7 @@ class Evaluator:
         # This is because the register_program will do reduction for a given Function score.
         # If 'score_per_test' is empty, we record it to the profiler at once.
         if scores_per_test:
+            self._log(f"Registered program | Avg Score: {sum(scores_per_test.values()) / len(scores_per_test):.3f} | Time: {evaluate_time:.2f}s")
             self._database.register_program(
                 new_function,
                 island_id,
@@ -213,6 +241,7 @@ class Evaluator:
                 evaluate_time=evaluate_time
             )
         else:
+            self._log("No valid scores. Not registered.")
             profiler: profile.Profiler = kwargs.get('profiler', None)
             if profiler:
                 global_sample_nums = kwargs.get('global_sample_nums', None)
