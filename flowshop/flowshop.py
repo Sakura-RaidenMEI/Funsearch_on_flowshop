@@ -49,11 +49,17 @@ class LLMAPI(sampler.LLM):
 
     def __init__(self, samples_per_prompt: int, trim=True):
         super().__init__(samples_per_prompt)
-        additional_prompt = ("Improve the scheduling heuristic to minimize makespan. "
-                             "You can change how jobs are ordered or inserted. "
-                             "Be creative. Think beyond NEH logic. "
-                             "Pls only generate neh_heuristic(processing_times: np.ndarray) function"
-                             "Use loops, conditionals, or clustering ideas. Only return valid Python code.")
+        additional_prompt = """Improve the NEH heuristic for PFSP to minimize makespan. Focus on:
+          1. **Scoring Strategy**: Modify how jobs are prioritized (e.g., dynamic alpha, machine load balancing).
+          2. **Insertion Logic**: Optimize the position selection during insertion (e.g., early termination if no improvement).
+          3. **Local Search**: Replace the swap-based search with more efficient methods (e.g., 3-opt, tabu search).
+          4. **Constraints**:
+            - Preserve job uniqueness (no duplicates).
+            - Only use `compute_makespan` for evaluation.
+            - Return a list of job indices (e.g., [0, 2, 1]).
+
+         " Generate *only* the `neh_heuristic` function body (no duplicate code from skeleton."""
+
 
         self._additional_prompt = additional_prompt
         self._trim = trim
@@ -188,6 +194,7 @@ class Sandbox(evaluator.Sandbox):
             # if raise any exception, we assume the execution failed
             result_queue.put((None, False))
 
+
 specification = r'''
 from typing import List
 import numpy as np
@@ -262,53 +269,13 @@ def neh_heuristic(processing_times: np.ndarray) -> list[int]:
     """
     num_jobs, num_machines = processing_times.shape
     alpha = 0.7  # Weight parameter: can be tuned/evolved (alpha in [0, 1])
-    
-    # Compute a weighted score for each job.
-    # Lower score indicates a job should be scheduled earlier.
-    job_scores = []
-    for job in range(num_jobs):
-        total_time = processing_times[job].sum()
-        max_time = processing_times[job].max()
-        score = alpha * total_time + (1 - alpha) * max_time
-        job_scores.append((job, score))
-    
-    # Sort jobs by ascending score (best candidate first)
-    job_scores.sort(key=lambda x: x[1])
-    
-    # Build an initial sequence using iterative insertion
-    sequence = [job_scores[0][0]]
-    for job, _ in job_scores[1:]:
-        best_sequence = None
-        best_makespan = float('inf')
-        # Try inserting the job in every possible position
-        for pos in range(len(sequence) + 1):
-            candidate_seq = sequence[:pos] + [job] + sequence[pos:]
-            ms = compute_makespan(candidate_seq, processing_times)
-            if ms < best_makespan:
-                best_makespan = ms
-                best_sequence = candidate_seq
-        sequence = best_sequence
 
-    # Local search: try pairwise swaps to further improve the sequence
-    improvement = True
-    while improvement:
-        improvement = False
-        current_makespan = compute_makespan(sequence, processing_times)
-        for i in range(num_jobs - 1):
-            for j in range(i + 1, num_jobs):
-                new_seq = sequence.copy()
-                new_seq[i], new_seq[j] = new_seq[j], new_seq[i]
-                new_makespan = compute_makespan(new_seq, processing_times)
-                if new_makespan < current_makespan:
-                    sequence = new_seq
-                    current_makespan = new_makespan
-                    improvement = True
-                    # Break out to restart the search after any improvement
-                    break
-            if improvement:
-                break
-
-    return sequence
+    # Step 1: Let LLM generate a job scoring strategy (e.g., dynamic weights)
+    job_order = sorted(range(num_jobs), key=lambda x: np.sum(processing_times[x]))
+    # Step 2: Let LLM generate an insertion procedure
+    schedule =  job_order 
+    # Step 3: (Optional) Let LLM add a local search phase
+    return schedule
 
 
 '''
@@ -368,7 +335,7 @@ if __name__ == '__main__':
     }
     class_config = config.ClassConfig(llm_class=LLMAPI, sandbox_class=Sandbox)
     config = config.Config(samples_per_prompt=4, evaluate_timeout_seconds=30)
-    global_max_sample_num = 50  # if it is set to None, funsearch will execute an endless loop
+    global_max_sample_num = 10  # if it is set to None, funsearch will execute an endless loop
     funsearch.main(
         specification=specification,
         inputs=instances,
